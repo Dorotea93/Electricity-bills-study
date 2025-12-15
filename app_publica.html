@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Escanear Factura CNMC</title>
+    <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.19.2/umd/index.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        :root {
+            --color-primary: #008080;
+            --color-success: #2ecc71;
+            --color-error: #e74c3c;
+            --color-bg: #f5f5f5;
+            --color-surface: #ffffff;
+            --color-text: #333;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--color-bg);
+            color: var(--color-text);
+            min-height: 100vh;
+        }
+
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 15px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 600px;
+            background: var(--color-surface);
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: var(--color-primary);
+            color: white;
+            padding: 25px 20px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 22px;
+            margin: 0 0 5px 0;
+        }
+
+        .header p {
+            font-size: 13px;
+            opacity: 0.9;
+            margin: 0;
+        }
+
+        .content {
+            padding: 25px 20px;
+        }
+
+        .scanner-info {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 13px;
+            color: #01579b;
+            line-height: 1.6;
+        }
+
+        #qr-reader {
+            width: 100%;
+            border: 3px solid var(--color-primary);
+            border-radius: 8px;
+            overflow: hidden;
+            margin: 20px 0;
+            background: #000;
+            min-height: 250px;
+        }
+
+        .data-display {
+            background: #f9f9f9;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border-left: 4px solid var(--color-primary);
+            display: none;
+        }
+
+        .data-display.show {
+            display: block;
+        }
+
+        .data-item {
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .data-item:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .data-label {
+            font-size: 11px;
+            color: #999;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+            font-weight: 600;
+        }
+
+        .data-value {
+            font-size: 15px;
+            font-weight: 500;
+            color: var(--color-text);
+            word-break: break-all;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        button {
+            flex: 1;
+            padding: 14px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: var(--color-primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #006666;
+            transform: translateY(-1px);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: #e0e0e0;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #d0d0d0;
+        }
+
+        .btn-success {
+            background: var(--color-success);
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #27ae60;
+        }
+
+        .message {
+            padding: 14px 15px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-size: 13px;
+            animation: slideIn 0.3s ease-in-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .message.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .message.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .message.warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeeba;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid var(--color-primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .status-box {
+            background: #f0f8f8;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            border-left: 4px solid var(--color-primary);
+        }
+
+        .status-label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 8px;
+        }
+
+        .status-value {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--color-primary);
+        }
+
+        .url-display {
+            background: #f0f0f0;
+            padding: 12px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 11px;
+            word-break: break-all;
+            margin: 10px 0;
+        }
+
+        @media (max-width: 600px) {
+            body {
+                padding: 10px;
+            }
+
+            .header h1 {
+                font-size: 20px;
+            }
+
+            .content {
+                padding: 20px 15px;
+            }
+
+            #qr-reader {
+                min-height: 280px;
+            }
+
+            button {
+                padding: 12px 16px;
+                font-size: 13px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📸 Escanear Factura</h1>
+            <p>CNMC - Sistema de Captura</p>
+        </div>
+
+        <div class="content">
+            <div id="messages-container"></div>
+
+            <div class="scanner-info">
+                <strong>📱 Cómo funciona:</strong><br>
+                1. Abre tu factura PDF<br>
+                2. Apunta la cámara al código QR<br>
+                3. Confirma los datos<br>
+                4. ¡Hecho! Se guardará automáticamente
+            </div>
+
+            <div id="qr-reader"></div>
+
+            <div id="scanned-data" class="data-display">
+                <div class="data-item">
+                    <div class="data-label">URL Detectada</div>
+                    <div class="url-display" id="detected-url"></div>
+                </div>
+                <div class="data-item">
+                    <div class="data-label">Estado</div>
+                    <div class="data-value" id="extraction-status">Procesando...</div>
+                </div>
+                <div id="extracted-fields"></div>
+            </div>
+
+            <div class="button-group">
+                <button class="btn-primary" id="start-btn" onclick="startScanner()">Iniciar Cámara</button>
+                <button class="btn-secondary" id="stop-btn" onclick="stopScanner()" style="display:none;">Detener</button>
+            </div>
+
+            <div class="status-box" style="display:none;" id="status-box">
+                <div class="status-label">Facturas capturadas en este dispositivo:</div>
+                <div class="status-value" id="local-count">0</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // CREDENCIALES INTEGRADAS (Opción 1 - Pública)
+        const SUPABASE_URL = 'https://cxkxcruqpxkybcsolbho.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_Zr8qNj0KR0tspZ-Tjfk3OA_BssLseHr';
+
+        let supabase = null;
+        let html5QrcodeScanner = null;
+        let scannerRunning = false;
+        let facturasPendientes = 0;
+
+        // Inicializar
+        function init() {
+            try {
+                const { createClient } = window.supabase;
+                supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+                showMessage('Sistema listo. Presiona "Iniciar Cámara"', 'info');
+                recuperarConteo();
+            } catch (err) {
+                showMessage('Error al conectar: ' + err.message, 'error');
+            }
+        }
+
+        function initializeScanner() {
+            if (html5QrcodeScanner) return;
+            html5QrcodeScanner = new Html5QrcodeScanner("qr-reader", { 
+                fps: 10,
+                qrdecodeWorkerPath: undefined,
+                rememberLastUsedCamera: true
+            });
+        }
+
+        function startScanner() {
+            if (scannerRunning || !html5QrcodeScanner) {
+                initializeScanner();
+            }
+
+            try {
+                html5QrcodeScanner.render(onScanSuccess, onScanError);
+                scannerRunning = true;
+                document.getElementById('start-btn').style.display = 'none';
+                document.getElementById('stop-btn').style.display = 'flex';
+                showMessage('Cámara activada. Apunta al QR...', 'info');
+            } catch (err) {
+                showMessage('Error al acceder a cámara: ' + err.message, 'error');
+            }
+        }
+
+        function stopScanner() {
+            if (!scannerRunning) return;
+            try {
+                html5QrcodeScanner.clear();
+                scannerRunning = false;
+                document.getElementById('start-btn').style.display = 'flex';
+                document.getElementById('stop-btn').style.display = 'none';
+                showMessage('Cámara detenida', 'info');
+            } catch (err) {
+                console.error('Error deteniendo scanner:', err);
+            }
+        }
+
+        function onScanSuccess(decodedText) {
+            console.log('QR detectado:', decodedText);
+            stopScanner();
+
+            document.getElementById('scanned-data').classList.add('show');
+            document.getElementById('detected-url').textContent = decodedText;
+            document.getElementById('extraction-status').textContent = 'Procesando...';
+
+            extractDataFromURL(decodedText);
+        }
+
+        function onScanError(error) {
+            console.debug('Scan error (ignorado):', error);
+        }
+
+        function extractDataFromURL(url) {
+            const datos = {
+                url: url,
+                periodo: 'Detectado en URL',
+                proveedor: 'Por confirmar',
+                tarifa: '---',
+                importe: 0,
+                notas: 'Datos extraídos automáticamente'
+            };
+
+            mostrarDatosExtraidos(datos);
+        }
+
+        function mostrarDatosExtraidos(datos) {
+            const fieldsDiv = document.getElementById('extracted-fields');
+            fieldsDiv.innerHTML = '<div class="data-item"><div class="data-label">Datos Capturados</div><div class="data-value">QR escaneado correctamente</div></div>';
+
+            document.getElementById('extraction-status').innerHTML = '<span style="color: #2ecc71;">✓ QR detectado</span>';
+
+            const button = document.createElement('button');
+            button.className = 'btn-success';
+            button.style.width = '100%';
+            button.style.marginTop = '15px';
+            button.textContent = '💾 Guardar en Base de Datos';
+            button.onclick = function() { 
+                guardarFacturaEnBD(datos);
+            };
+
+            const container = document.getElementById('scanned-data');
+            const oldBtn = container.querySelector('.btn-success');
+            if (oldBtn) oldBtn.remove();
+            container.appendChild(button);
+        }
+
+        async function guardarFacturaEnBD(datos) {
+            if (!supabase) {
+                showMessage('Error: No conectado a BD', 'error');
+                return;
+            }
+
+            try {
+                const btnGuardar = document.querySelector('.btn-success');
+                if (btnGuardar) {
+                    btnGuardar.disabled = true;
+                    btnGuardar.innerHTML = '<span class="loading"></span>Guardando...';
+                }
+
+                const { error } = await supabase.from('facturas').insert([{
+                    url: datos.url,
+                    periodo: datos.periodo,
+                    proveedor: datos.proveedor,
+                    tarifa: datos.tarifa,
+                    importe: datos.importe,
+                    notas: datos.notas,
+                    estado: 'capturada',
+                    usuario_email: 'usuario_anonimo'
+                }]);
+
+                if (error) throw error;
+
+                // Incrementar contador local
+                facturasPendientes++;
+                document.getElementById('local-count').textContent = facturasPendientes;
+                document.getElementById('status-box').style.display = 'block';
+
+                showMessage('✅ Factura guardada exitosamente', 'success');
+
+                // Limpiar UI después de 2 segundos
+                setTimeout(function() {
+                    document.getElementById('scanned-data').classList.remove('show');
+                    if (btnGuardar) {
+                        btnGuardar.disabled = false;
+                        btnGuardar.innerHTML = '💾 Guardar en Base de Datos';
+                    }
+                }, 2000);
+
+            } catch (err) {
+                showMessage('Error al guardar: ' + err.message, 'error');
+                const btnGuardar = document.querySelector('.btn-success');
+                if (btnGuardar) {
+                    btnGuardar.disabled = false;
+                    btnGuardar.innerHTML = '💾 Guardar en Base de Datos';
+                }
+            }
+        }
+
+        function recuperarConteo() {
+            const conteo = localStorage.getItem('facturas_capturadas') || '0';
+            facturasPendientes = parseInt(conteo);
+            if (facturasPendientes > 0) {
+                document.getElementById('local-count').textContent = facturasPendientes;
+                document.getElementById('status-box').style.display = 'block';
+            }
+        }
+
+        function showMessage(message, type) {
+            const container = document.getElementById('messages-container');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message ' + type;
+            messageDiv.textContent = message;
+
+            container.insertBefore(messageDiv, container.firstChild);
+
+            setTimeout(function() { 
+                messageDiv.remove(); 
+            }, 4000);
+        }
+
+        // Iniciar cuando se carga la página
+        window.addEventListener('DOMContentLoaded', function() {
+            initializeScanner();
+            init();
+        });
+    </script>
+</body>
+</html>
