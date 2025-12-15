@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Escanear Factura CNMC</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.4/html5-qrcode.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100vh;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #000;
+            overflow: hidden;
+        }
+
+        #qr-reader {
+            width: 100% !important;
+            height: 100vh !important;
+        }
+
+        #qr-reader__scan_region {
+            overflow: hidden !important;
+        }
+
+        .header-ui {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 15px;
+            background: linear-gradient(180deg, rgba(0,0,0,0.8) 0%, transparent 100%);
+            color: white;
+            text-align: center;
+            z-index: 60;
+        }
+
+        .header-ui h1 {
+            font-size: 18px;
+            margin: 0 0 3px 0;
+            font-weight: 600;
+        }
+
+        .header-ui p {
+            font-size: 11px;
+            margin: 0;
+            opacity: 0.8;
+        }
+
+        .crosshair {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 180px;
+            height: 180px;
+            border: 3px solid rgba(0, 200, 150, 0.8);
+            z-index: 55;
+            pointer-events: none;
+            box-shadow: 
+                0 0 30px rgba(0, 200, 150, 0.6),
+                inset 0 0 20px rgba(0, 200, 150, 0.2);
+        }
+
+        .status-bar {
+            position: fixed;
+            top: 70px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 200, 150, 0.95);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 12px;
+            z-index: 70;
+            animation: slideDown 0.3s ease-out;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateX(-50%) translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0);
+            }
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 15px;
+            left: 15px;
+            right: 15px;
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+        }
+
+        button {
+            flex: 1;
+            padding: 13px;
+            border: none;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: #008080;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #006666;
+        }
+
+        .btn-secondary {
+            background: #ff5555;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #dd0000;
+        }
+
+        /* OVERLAY FEEDBACK */
+        .feedback-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 150;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .feedback-overlay.show {
+            display: flex;
+        }
+
+        .feedback-content {
+            text-align: center;
+            color: white;
+        }
+
+        .feedback-icon {
+            font-size: 70px;
+            margin-bottom: 20px;
+            animation: bounceIn 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+        }
+
+        .feedback-message {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 15px;
+            animation: fadeIn 0.5s ease-out 0.2s both;
+        }
+
+        .feedback-subtext {
+            font-size: 14px;
+            opacity: 0.9;
+            margin-bottom: 20px;
+            animation: fadeIn 0.5s ease-out 0.4s both;
+        }
+
+        .loading-bar {
+            width: 120px;
+            height: 5px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 3px;
+            overflow: hidden;
+            margin: 0 auto;
+        }
+
+        .loading-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #2ecc71, #27ae60);
+            animation: loadingAnimation 3s ease-out forwards;
+        }
+
+        @keyframes bounceIn {
+            0% {
+                transform: scale(0);
+                opacity: 0;
+            }
+            50% {
+                transform: scale(1.15);
+            }
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes loadingAnimation {
+            0% {
+                width: 0%;
+            }
+            100% {
+                width: 100%;
+            }
+        }
+
+        .error-message {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(231, 76, 60, 0.95);
+            color: white;
+            padding: 20px 30px;
+            border-radius: 10px;
+            text-align: center;
+            z-index: 140;
+            font-size: 14px;
+            display: none;
+            animation: popIn 0.4s ease-out;
+        }
+
+        .error-message.show {
+            display: block;
+        }
+
+        @keyframes popIn {
+            0% {
+                transform: translate(-50%, -50%) scale(0.8);
+                opacity: 0;
+            }
+            100% {
+                transform: translate(-50%, -50%) scale(1);
+                opacity: 1;
+            }
+        }
+
+        @media (max-width: 600px) {
+            .feedback-icon {
+                font-size: 60px;
+            }
+
+            .feedback-message {
+                font-size: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header-ui">
+        <h1>📸 Escanear Factura</h1>
+        <p>CNMC - Sistema de Captura</p>
+    </div>
+
+    <div id="qr-reader"></div>
+    <div class="crosshair"></div>
+    <div class="status-bar" id="status-bar">✓ Cámara lista. Apunta al QR...</div>
+
+    <div class="feedback-overlay" id="feedback">
+        <div class="feedback-content">
+            <div class="feedback-icon">✓</div>
+            <div class="feedback-message">QR Detectado</div>
+            <div class="feedback-subtext">Guardando en base de datos...</div>
+            <div class="loading-bar">
+                <div class="loading-bar-fill"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="error-message" id="error-msg"></div>
+
+    <div class="controls">
+        <button class="btn-primary" id="startBtn" onclick="iniciarScanner()">Iniciar Cámara</button>
+        <button class="btn-secondary" id="stopBtn" onclick="detenerScanner()" style="display:none;">Detener</button>
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://cxkxcruqpxkybcsolbho.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_Zr8qNj0KR0tspZ-Tjfk3OA_BssLseHr';
+
+        let supabase = null;
+        let html5QrcodeScanner = null;
+        let isScanning = false;
+        let lastQR = null;
+        let qrCount = 0;
+
+        function inicializarSupabase() {
+            try {
+                const { createClient } = window.supabase;
+                supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+                console.log('✓ Supabase conectado');
+            } catch (err) {
+                console.error('Error Supabase:', err);
+                mostrarError('Error de conexión');
+            }
+        }
+
+        function iniciarScanner() {
+            try {
+                html5QrcodeScanner = new Html5Qrcode("qr-reader");
+
+                const config = {
+                    fps: 10,
+                    qrbox: { width: 250, height: 250 },
+                    aspectRatio: 1.0,
+                    rememberLastUsedCamera: true,
+                    useBarCodeDetectorIfAvailable: true
+                };
+
+                html5QrcodeScanner.start(
+                    { facingMode: "environment" },
+                    config,
+                    onQRCodeScanned,
+                    onQRCodeError
+                ).then(() => {
+                    isScanning = true;
+                    lastQR = null;
+                    qrCount = 0;
+                    document.getElementById('startBtn').style.display = 'none';
+                    document.getElementById('stopBtn').style.display = 'flex';
+                    console.log('✓ Scanner iniciado');
+                }).catch((err) => {
+                    mostrarError('Error al acceder a cámara: ' + err.message);
+                    console.error('Error:', err);
+                });
+
+            } catch (err) {
+                mostrarError('Error: ' + err.message);
+                console.error('Error:', err);
+            }
+        }
+
+        function detenerScanner() {
+            if (html5QrcodeScanner) {
+                html5QrcodeScanner.stop().then(() => {
+                    isScanning = false;
+                    lastQR = null;
+                    document.getElementById('startBtn').style.display = 'flex';
+                    document.getElementById('stopBtn').style.display = 'none';
+                    console.log('✓ Scanner detenido');
+                }).catch(err => {
+                    console.error('Error al detener:', err);
+                });
+            }
+        }
+
+        function onQRCodeScanned(decodedText) {
+            if (!isScanning || decodedText === lastQR) return;
+
+            lastQR = decodedText;
+            qrCount++;
+            console.log('✓ QR #' + qrCount + ' detectado: ' + decodedText);
+
+            mostrarFeedback();
+            guardarEnBD(decodedText);
+        }
+
+        function onQRCodeError(error) {
+            // Ignorar errores silenciosos de escaneo
+        }
+
+        function mostrarFeedback() {
+            const feedback = document.getElementById('feedback');
+            feedback.classList.add('show');
+
+            setTimeout(() => {
+                feedback.classList.remove('show');
+                lastQR = null;
+            }, 3000);
+        }
+
+        async function guardarEnBD(qrData) {
+            if (!supabase) return;
+
+            try {
+                const { error } = await supabase.from('facturas').insert([{
+                    url: qrData,
+                    periodo: new Date().toLocaleString('es-ES'),
+                    proveedor: 'Por confirmar',
+                    tarifa: '---',
+                    importe: 0,
+                    notas: 'QR escaneo automático #' + qrCount,
+                    estado: 'capturada',
+                    usuario_email: 'anonimo'
+                }]);
+
+                if (error) throw error;
+
+                console.log('✓ Guardado en BD. Total: ' + qrCount);
+
+            } catch (err) {
+                console.error('Error BD:', err);
+                mostrarError('Error al guardar');
+            }
+        }
+
+        function mostrarError(msg) {
+            const errorDiv = document.getElementById('error-msg');
+            errorDiv.textContent = msg;
+            errorDiv.classList.add('show');
+
+            setTimeout(() => {
+                errorDiv.classList.remove('show');
+            }, 3000);
+        }
+
+        window.addEventListener('DOMContentLoaded', inicializarSupabase);
+
+        document.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+        }, { passive: false });
+    </script>
+</body>
+</html>
