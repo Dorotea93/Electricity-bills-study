@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Escanear Factura CNMC</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.4/html5-qrcode.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -20,30 +21,13 @@
             overflow: hidden;
         }
 
-        body {
-            display: flex;
-            flex-direction: column;
+        #qr-reader {
+            width: 100% !important;
+            height: 100vh !important;
         }
 
-        #video-container {
-            width: 100%;
-            height: 100vh;
-            background: #000;
-            position: relative;
-            overflow: hidden;
-        }
-
-        video {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            display: block;
-            -webkit-transform: scaleX(-1);
-            transform: scaleX(-1);
-        }
-
-        canvas {
-            display: none;
+        #qr-reader__scan_region {
+            overflow: hidden !important;
         }
 
         .header-ui {
@@ -51,23 +35,23 @@
             top: 0;
             left: 0;
             right: 0;
-            padding: 12px;
-            background: linear-gradient(180deg, rgba(0,0,0,0.9) 0%, transparent 100%);
+            padding: 15px;
+            background: linear-gradient(180deg, rgba(0,0,0,0.8) 0%, transparent 100%);
             color: white;
             text-align: center;
             z-index: 60;
         }
 
         .header-ui h1 {
-            font-size: 16px;
-            margin: 0;
+            font-size: 18px;
+            margin: 0 0 3px 0;
             font-weight: 600;
         }
 
         .header-ui p {
-            font-size: 10px;
-            margin: 2px 0 0 0;
-            opacity: 0.7;
+            font-size: 11px;
+            margin: 0;
+            opacity: 0.8;
         }
 
         .crosshair {
@@ -75,173 +59,241 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            width: 200px;
-            height: 200px;
-            border: 3px solid rgba(0, 200, 150, 0.7);
+            width: 180px;
+            height: 180px;
+            border: 3px solid rgba(0, 200, 150, 0.8);
             z-index: 55;
             pointer-events: none;
-            box-shadow: 0 0 25px rgba(0, 200, 150, 0.5);
+            box-shadow: 
+                0 0 30px rgba(0, 200, 150, 0.6),
+                inset 0 0 20px rgba(0, 200, 150, 0.2);
         }
 
         .status-bar {
             position: fixed;
-            top: 60px;
+            top: 70px;
             left: 50%;
             transform: translateX(-50%);
-            background: rgba(46, 204, 113, 0.95);
+            background: rgba(0, 200, 150, 0.95);
             color: white;
-            padding: 8px 16px;
+            padding: 10px 20px;
             border-radius: 20px;
-            font-size: 11px;
+            font-size: 12px;
             z-index: 70;
-            opacity: 0;
-            transition: opacity 0.3s;
+            animation: slideDown 0.3s ease-out;
         }
 
-        .status-bar.active {
-            opacity: 1;
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateX(-50%) translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0);
+            }
         }
 
         .controls {
             position: fixed;
-            bottom: 12px;
-            left: 12px;
-            right: 12px;
+            bottom: 15px;
+            left: 15px;
+            right: 15px;
             display: flex;
-            gap: 8px;
+            gap: 10px;
             z-index: 100;
         }
 
         button {
             flex: 1;
-            padding: 12px;
+            padding: 13px;
             border: none;
-            border-radius: 6px;
-            font-size: 12px;
+            border-radius: 8px;
+            font-size: 13px;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s;
         }
 
-        .btn-start {
+        .btn-primary {
             background: #008080;
             color: white;
         }
 
-        .btn-start:active {
+        .btn-primary:hover {
             background: #006666;
         }
 
-        .btn-stop {
-            background: #e74c3c;
+        .btn-secondary {
+            background: #ff5555;
             color: white;
         }
 
-        .btn-stop:active {
-            background: #c0392b;
+        .btn-secondary:hover {
+            background: #dd0000;
         }
 
-        /* POPUP DE ÉXITO */
-        .success-popup {
+        /* OVERLAY FEEDBACK */
+        .feedback-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 150;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .feedback-overlay.show {
+            display: flex;
+        }
+
+        .feedback-content {
+            text-align: center;
+            color: white;
+        }
+
+        .feedback-icon {
+            font-size: 70px;
+            margin-bottom: 20px;
+            animation: bounceIn 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+        }
+
+        .feedback-message {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 15px;
+            animation: fadeIn 0.5s ease-out 0.2s both;
+        }
+
+        .feedback-subtext {
+            font-size: 14px;
+            opacity: 0.9;
+            margin-bottom: 20px;
+            animation: fadeIn 0.5s ease-out 0.4s both;
+        }
+
+        .loading-bar {
+            width: 120px;
+            height: 5px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 3px;
+            overflow: hidden;
+            margin: 0 auto;
+        }
+
+        .loading-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #2ecc71, #27ae60);
+            animation: loadingAnimation 3s ease-out forwards;
+        }
+
+        @keyframes bounceIn {
+            0% {
+                transform: scale(0);
+                opacity: 0;
+            }
+            50% {
+                transform: scale(1.15);
+            }
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes loadingAnimation {
+            0% {
+                width: 0%;
+            }
+            100% {
+                width: 100%;
+            }
+        }
+
+        .error-message {
             position: fixed;
             top: 50%;
             left: 50%;
-            transform: translate(-50%, -50%) scale(0);
-            background: rgba(46, 204, 113, 0.98);
+            transform: translate(-50%, -50%);
+            background: rgba(231, 76, 60, 0.95);
             color: white;
-            padding: 30px 40px;
-            border-radius: 12px;
+            padding: 20px 30px;
+            border-radius: 10px;
             text-align: center;
-            z-index: 200;
-            pointer-events: none;
-            transition: transform 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            z-index: 140;
+            font-size: 14px;
+            display: none;
+            animation: popIn 0.4s ease-out;
         }
 
-        .success-popup.show {
-            transform: translate(-50%, -50%) scale(1);
-        }
-
-        .success-icon {
-            font-size: 50px;
-            margin-bottom: 15px;
+        .error-message.show {
             display: block;
         }
 
-        .success-text {
-            font-size: 16px;
-            font-weight: 600;
-            margin-bottom: 8px;
-        }
-
-        .success-subtext {
-            font-size: 12px;
-            opacity: 0.9;
-        }
-
-        /* PULSE ANIMATION */
-        @keyframes pulse {
-            0%, 100% {
-                box-shadow: 0 0 25px rgba(0, 200, 150, 0.5);
+        @keyframes popIn {
+            0% {
+                transform: translate(-50%, -50%) scale(0.8);
+                opacity: 0;
             }
-            50% {
-                box-shadow: 0 0 40px rgba(0, 200, 150, 0.8);
+            100% {
+                transform: translate(-50%, -50%) scale(1);
+                opacity: 1;
             }
-        }
-
-        .crosshair.active {
-            animation: pulse 1.5s ease-in-out infinite;
         }
 
         @media (max-width: 600px) {
-            .header-ui h1 {
-                font-size: 14px;
+            .feedback-icon {
+                font-size: 60px;
             }
 
-            button {
-                padding: 10px;
-                font-size: 11px;
-            }
-
-            .success-popup {
-                padding: 20px 30px;
-            }
-
-            .success-icon {
-                font-size: 40px;
-            }
-
-            .success-text {
-                font-size: 14px;
+            .feedback-message {
+                font-size: 20px;
             }
         }
     </style>
 </head>
 <body>
-    <div id="video-container">
-        <video id="video" playsinline autoplay muted></video>
-        <canvas id="canvas"></canvas>
-    </div>
-
     <div class="header-ui">
         <h1>📸 Escanear Factura</h1>
         <p>CNMC - Sistema de Captura</p>
     </div>
 
-    <div class="crosshair" id="crosshair"></div>
+    <div id="qr-reader"></div>
+    <div class="crosshair"></div>
+    <div class="status-bar" id="status-bar">✓ Cámara lista. Apunta al QR...</div>
 
-    <div class="status-bar" id="status-bar">
-        ✓ Cámara activa. Apunta al QR...
+    <div class="feedback-overlay" id="feedback">
+        <div class="feedback-content">
+            <div class="feedback-icon" id="feedback-icon">✓</div>
+            <div class="feedback-message" id="feedback-message">QR Detectado</div>
+            <div class="feedback-subtext" id="feedback-subtext">Guardando en base de datos...</div>
+            <div class="loading-bar" id="loading-bar">
+                <div class="loading-bar-fill"></div>
+            </div>
+        </div>
     </div>
 
-    <div class="success-popup" id="success-popup">
-        <span class="success-icon">✓</span>
-        <div class="success-text">QR Detectado</div>
-        <div class="success-subtext">Guardando en base de datos...</div>
-    </div>
+    <div class="error-message" id="error-msg"></div>
 
     <div class="controls">
-        <button class="btn-start" id="startBtn" onclick="iniciar()">Iniciar Cámara</button>
-        <button class="btn-stop" id="stopBtn" onclick="detener()" style="display:none;">Detener</button>
+        <button class="btn-primary" id="startBtn" onclick="iniciarScanner()">Iniciar Cámara</button>
+        <button class="btn-secondary" id="stopBtn" onclick="detenerScanner()" style="display:none;">Detener</button>
     </div>
 
     <script>
@@ -249,159 +301,181 @@
         const SUPABASE_KEY = 'sb_publishable_Zr8qNj0KR0tspZ-Tjfk3OA_BssLseHr';
 
         let supabase = null;
-        let stream = null;
-        let scanning = false;
-        let lastDetected = 0;
-        let scanCount = 0;
+        let html5QrcodeScanner = null;
+        let isScanning = false;
+        let lastQR = null;
+        let qrCount = 0;
 
-        // Inicializar
-        window.addEventListener('load', () => {
+        function inicializarSupabase() {
             try {
                 const { createClient } = window.supabase;
                 supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-                console.log('✓ Sistema listo');
-            } catch (e) {
-                console.error('Error:', e);
+                console.log('✓ Supabase conectado');
+            } catch (err) {
+                console.error('Error Supabase:', err);
+                mostrarError('Error de conexión');
             }
-        });
+        }
 
-        async function iniciar() {
+        function iniciarScanner() {
             try {
-                console.log('Solicitando acceso a cámara...');
+                html5QrcodeScanner = new Html5Qrcode("qr-reader");
 
-                const video = document.getElementById('video');
+                const config = {
+                    fps: 10,
+                    qrbox: { width: 250, height: 250 },
+                    aspectRatio: 1.0,
+                    rememberLastUsedCamera: true,
+                    useBarCodeDetectorIfAvailable: true
+                };
 
-                stream = await navigator.mediaDevices.getUserMedia({
-                    video: { 
-                        facingMode: 'environment',
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
-                    },
-                    audio: false
+                html5QrcodeScanner.start(
+                    { facingMode: "environment" },
+                    config,
+                    onQRCodeScanned,
+                    onQRCodeError
+                ).then(() => {
+                    isScanning = true;
+                    lastQR = null;
+                    qrCount = 0;
+                    document.getElementById('startBtn').style.display = 'none';
+                    document.getElementById('stopBtn').style.display = 'flex';
+                    console.log('✓ Scanner iniciado');
+                }).catch((err) => {
+                    mostrarError('Error al acceder a cámara: ' + err.message);
+                    console.error('Error:', err);
                 });
 
-                video.srcObject = stream;
-                video.play();
-
-                scanning = true;
-                lastDetected = 0;
-                scanCount = 0;
-
-                document.getElementById('startBtn').style.display = 'none';
-                document.getElementById('stopBtn').style.display = 'block';
-                document.getElementById('status-bar').classList.add('active');
-                document.getElementById('crosshair').classList.add('active');
-
-                console.log('✓ Cámara iniciada');
-
-                // Comenzar a escanear
-                escanear();
-
             } catch (err) {
-                alert('Error de cámara:\n\n' + err.message + '\n\nVerifica permisos en Configuración');
+                mostrarError('Error: ' + err.message);
                 console.error('Error:', err);
             }
         }
 
-        function detener() {
-            if (stream) {
-                stream.getTracks().forEach(track => track.stop());
+        function detenerScanner() {
+            if (html5QrcodeScanner) {
+                html5QrcodeScanner.stop().then(() => {
+                    isScanning = false;
+                    lastQR = null;
+                    document.getElementById('startBtn').style.display = 'flex';
+                    document.getElementById('stopBtn').style.display = 'none';
+                    console.log('✓ Scanner detenido');
+                }).catch(err => {
+                    console.error('Error al detener:', err);
+                });
             }
-            scanning = false;
-            document.getElementById('startBtn').style.display = 'block';
-            document.getElementById('stopBtn').style.display = 'none';
-            document.getElementById('status-bar').classList.remove('active');
-            document.getElementById('crosshair').classList.remove('active');
-            console.log('✓ Cámara detenida');
         }
 
-        function escanear() {
-            if (!scanning) return;
+        function onQRCodeScanned(decodedText) {
+            // Permitimos re-escanear el mismo QR solo después de que el feedback se haya ido (lastQR === null).
+            if (!isScanning || decodedText === lastQR) return;
 
-            const video = document.getElementById('video');
-            const canvas = document.getElementById('canvas');
-            const ctx = canvas.getContext('2d');
+            lastQR = decodedText;
+            qrCount++;
+            console.log('✓ QR #' + qrCount + ' detectado: ' + decodedText);
 
-            if (video.readyState === video.HAVE_ENOUGH_DATA) {
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            // 1. Mostrar estado inicial de escaneo/carga
+            mostrarFeedback('loading');
+            
+            // 2. Intentar guardar en la base de datos
+            guardarEnBD(decodedText);
+        }
 
-                // Detectar patrones de alto contraste (QR)
-                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                if (detectarPatronQR(imageData)) {
-                    const ahora = Date.now();
-                    if (ahora - lastDetected > 2000) {
-                        lastDetected = ahora;
-                        scanCount++;
-                        detectado();
-                    }
-                }
+        function onQRCodeError(error) {
+            // Ignorar errores silenciosos de escaneo
+        }
+
+        /**
+         * Muestra el overlay de feedback con un estado específico
+         * @param {string} state - 'loading', 'success', o 'error'
+         * @param {string} [msg=''] - Mensaje opcional para el subtexto
+         */
+        function mostrarFeedback(state, msg = '') {
+            const feedback = document.getElementById('feedback');
+            const icon = document.getElementById('feedback-icon');
+            const message = document.getElementById('feedback-message');
+            const subtext = document.getElementById('feedback-subtext');
+            const loadingBar = document.getElementById('loading-bar');
+            
+            // Limpiar cualquier timeout anterior
+            clearTimeout(feedback.timeout);
+            icon.style.color = 'white'; // Color base
+
+            if (state === 'loading') {
+                icon.textContent = '⏱️';
+                message.textContent = 'QR Detectado';
+                subtext.textContent = 'Guardando en base de datos...';
+                loadingBar.style.display = 'block';
+                feedback.classList.add('show');
+            } else if (state === 'success') {
+                icon.textContent = '✅';
+                message.textContent = '¡Guardado Exitoso!';
+                subtext.textContent = `Registro #${qrCount} guardado. Listo para escanear otro.`;
+                loadingBar.style.display = 'none';
+                icon.style.color = '#2ecc71'; // Verde para éxito
+                // Ocultar después de 3 segundos
+                feedback.timeout = setTimeout(() => {
+                    feedback.classList.remove('show');
+                    lastQR = null; // Permitimos un nuevo escaneo
+                }, 3000);
+
+            } else if (state === 'error') {
+                icon.textContent = '❌';
+                message.textContent = '¡Error al Guardar!';
+                subtext.textContent = msg || 'Hubo un problema con la conexión o la base de datos.';
+                loadingBar.style.display = 'none';
+                icon.style.color = '#e74c3c'; // Rojo para error
+                // Ocultar después de 4 segundos
+                feedback.timeout = setTimeout(() => {
+                    feedback.classList.remove('show');
+                    lastQR = null; // Permitimos un nuevo intento/escaneo
+                }, 4000);
             }
-
-            requestAnimationFrame(escanear);
         }
 
-        function detectarPatronQR(imageData) {
-            const data = imageData.data;
-            let pixelesAltoContraste = 0;
-
-            // Muestrear cada 4 píxeles para ir más rápido
-            for (let i = 0; i < data.length; i += 16) {
-                const r = data[i];
-                const g = data[i + 1];
-                const b = data[i + 2];
-
-                // Luminancia
-                const lum = (r * 299 + g * 587 + b * 114) / 1000;
-
-                // QR tiene puntos negros y blancos (alto contraste)
-                if (lum < 80 || lum > 200) {
-                    pixelesAltoContraste++;
-                }
-            }
-
-            // Si más del 30% son alto contraste, probablemente sea QR
-            return pixelesAltoContraste > (data.length / 16) * 0.3;
-        }
-
-        function detectado() {
-            console.log('✓ QR #' + scanCount + ' detectado');
-
-            // Mostrar popup
-            const popup = document.getElementById('success-popup');
-            popup.classList.add('show');
-
-            setTimeout(() => {
-                popup.classList.remove('show');
-            }, 2500);
-
-            // Guardar en BD
-            guardar();
-        }
-
-        async function guardar() {
-            if (!supabase) return;
+        async function guardarEnBD(qrData) {
+            if (!supabase) return mostrarFeedback('error', 'Supabase no inicializado');
 
             try {
                 const { error } = await supabase.from('facturas').insert([{
-                    url: 'QR_' + scanCount + '_' + Date.now(),
+                    url: qrData,
                     periodo: new Date().toLocaleString('es-ES'),
                     proveedor: 'Por confirmar',
                     tarifa: '---',
                     importe: 0,
-                    notas: 'Escaneo automático #' + scanCount,
+                    notas: 'QR escaneo automático #' + qrCount,
                     estado: 'capturada',
                     usuario_email: 'anonimo'
                 }]);
 
-                if (error) throw error;
-                console.log('✓ Guardado. Total: ' + scanCount);
+                if (error) {
+                    // Si hay un error de Supabase, lanzamos el error
+                    throw error;
+                }
+
+                // Éxito: Llamamos al feedback de éxito
+                mostrarFeedback('success');
+                console.log('✓ Guardado en BD. Total: ' + qrCount);
 
             } catch (err) {
                 console.error('Error BD:', err);
+                // Error: Llamamos al feedback de error
+                mostrarFeedback('error', `Error: ${err.message || 'Desconocido'}`);
+                mostrarError('Error al guardar: ' + (err.message || 'Verifique conexión'));
             }
         }
+
+        function mostrarError(msg) {
+            const errorDiv = document.getElementById('error-msg');
+            errorDiv.textContent = msg;
+            errorDiv.classList.add('show');
+
+            setTimeout(() => {
+                errorDiv.classList.remove('show');
+            }, 3000);
+        }
+
+        window.addEventListener('DOMContentLoaded', inicializarSupabase);
 
         document.addEventListener('touchmove', (e) => {
             e.preventDefault();
